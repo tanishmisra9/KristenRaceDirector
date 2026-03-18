@@ -70,9 +70,21 @@ class BattleScorer:
         w = self._weights
         p = self._params
 
+        now = datetime.now(UTC)
         for num, state in states.items():
             if state.in_pit:
                 continue
+            if (
+                state.interval_to_ahead is None
+                and state.position > 1
+                and state.pit_exit_time is not None
+            ):
+                exit_time = state.pit_exit_time
+                if exit_time.tzinfo is None:
+                    exit_time = exit_time.replace(tzinfo=now.tzinfo)
+                elapsed_since_pit = (now - exit_time).total_seconds()
+                if elapsed_since_pit < 30:
+                    continue
             bd = ScoringBreakdown(
                 interval_ahead=score_interval_ahead(state, p),
                 interval_behind=score_interval_behind(state, p),

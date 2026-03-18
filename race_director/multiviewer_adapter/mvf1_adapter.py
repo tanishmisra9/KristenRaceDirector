@@ -284,88 +284,118 @@ class Mvf1Adapter:
                 target_time = None
 
             old_ids = {str(p.id) for p in players}
-            player.switch_stream(new_tla)
+            try:
+                player.switch_stream(new_tla)
+            except Exception as e:
+                error_msg = str(e)
+                if "NaN" in error_msg:
+                    log.warning(
+                        "switch_stream_nan_error",
+                        tla=new_tla,
+                        error=error_msg,
+                        hint="Player state contains NaN",
+                    )
+                    try:
+                        mv_retry = MultiViewerForF1()
+                        if hasattr(mv_retry, "player_delete"):
+                            mv_retry.player_delete(int(player.id))
+                            time.sleep(0.5)
+                        if hasattr(mv_retry, "player_create"):
+                            mv_retry.player_create(new_tla)
+                            old_ids.discard(str(player.id))
+                            log.info("manual_player_create", tla=new_tla)
+                        else:
+                            raise
+                    except Exception as e2:
+                        log.warning("manual_create_failed", error=str(e2))
+                        return False
+                else:
+                    raise
 
-            SYNC_ATTEMPTS = 4
-            SYNC_RETRY_DELAY = 1.5
-            SYNC_MIN_TIME = 10.0
+            INITIAL_WAIT = 3.0
+            SYNC_ATTEMPTS = 3
+            RETRY_WAIT = 2.0
+            SYNC_MIN_TIME = 30.0
+
+            time.sleep(INITIAL_WAIT)
+
+            mv = MultiViewerForF1()
+            new_players = self._get_onboard_players(mv)
+            new_player = None
+            for p in sorted(new_players, key=lambda x: str(x.id), reverse=True):
+                if str(p.id) not in old_ids:
+                    new_player = p
+                    break
+            if new_player is None and new_players:
+                new_player = new_players[-1]
+
+            if new_player:
+                new_pid = str(new_player.id)
+                self._slot_assignments[slot_index] = new_pid
+                log.info(
+                    "slot_assignment_updated",
+                    slot=slot_index,
+                    old_player_id=old_player_id,
+                    new_player_id=new_pid,
+                )
 
             sync_success = False
             sync_path = "none"
-            new_player = None
             commentary_id = str(commentary.id) if commentary else None
 
+            if new_player is None:
+                log.warning("no_new_player_after_switch")
+                log.info("mvf1_switch_success", slot=slot_index, new_tla=new_tla, player_id=0)
+                return True
+
             for attempt in range(1, SYNC_ATTEMPTS + 1):
-                time.sleep(SYNC_RETRY_DELAY if attempt == 1 else 1.0)
-
-                mv = MultiViewerForF1()
-                new_players = self._get_onboard_players(mv)
-
-                if new_player is None:
-                    for p in sorted(new_players, key=lambda x: str(x.id), reverse=True):
-                        if str(p.id) not in old_ids:
-                            new_player = p
-                            break
-                    if new_player is None and new_players:
-                        new_player = new_players[-1]
-
-                    if new_player:
-                        new_pid = str(new_player.id)
-                        self._slot_assignments[slot_index] = new_pid
-                        log.info(
-                            "slot_assignment_updated",
-                            slot=slot_index,
-                            old_player_id=old_player_id,
-                            new_player_id=new_pid,
-                        )
-
-                if new_player is None:
-                    log.warning("sync_no_new_player", attempt=attempt)
-                    continue
-
-                refreshed = next(
-                    (p for p in new_players if str(p.id) == str(new_player.id)),
-                    new_player,
-                )
-
-                if target_time is not None:
-                    self._sync_player_to_time(refreshed.id, target_time)
                 if commentary_id:
                     self._sync_via_player_sync(commentary_id)
 
-                player_time = None
-                try:
-                    state = getattr(refreshed, "state", None) or {}
-                    player_time = state.get("interpolatedCurrentTime") or state.get("currentTime")
-                except Exception:
-                    pass
+                time.sleep(RETRY_WAIT)
 
-                if player_time is not None and not (math.isnan(player_time) or math.isinf(player_time)):
-                    if target_time is not None and player_time >= SYNC_MIN_TIME:
-                        drift = abs(player_time - target_time)
-                        sync_success = True
-                        sync_path = f"verified_attempt_{attempt}"
-                        log.info(
-                            "sync_verified",
-                            attempt=attempt,
-                            player_time=round(player_time, 1),
-                            target_time=round(target_time, 1),
-                            drift=round(drift, 1),
+                mv = MultiViewerForF1()
+                fresh_players = self._get_onboard_players(mv)
+                refreshed = next(
+                    (p for p in fresh_players if str(p.id) == str(new_player.id)),
+                    None,
+                )
+
+                player_time = None
+                if refreshed:
+                    try:
+                        state = getattr(refreshed, "state", None) or {}
+                        player_time = (
+                            state.get("interpolatedCurrentTime")
+                            or state.get("currentTime")
                         )
-                        break
-                    elif target_time is None:
-                        sync_success = True
-                        sync_path = f"no_target_attempt_{attempt}"
-                        break
+                        if player_time is not None and (
+                            math.isnan(player_time) or math.isinf(player_time)
+                        ):
+                            player_time = None
+                    except Exception:
+                        pass
+
+                if player_time is not None and player_time >= SYNC_MIN_TIME:
+                    drift = abs(player_time - target_time) if target_time else 0
+                    sync_success = True
+                    sync_path = f"playerSync_attempt_{attempt}"
+                    log.info(
+                        "sync_verified",
+                        attempt=attempt,
+                        player_time=round(player_time, 1),
+                        target_time=round(target_time, 1) if target_time else None,
+                        drift=round(drift, 1),
+                    )
+                    break
 
                 log.info(
                     "sync_retry",
                     attempt=attempt,
                     player_time=player_time,
-                    target_time=target_time,
                 )
 
-            if not sync_success and new_player:
+            if not sync_success:
                 try:
                     mv_final = MultiViewerForF1()
                     mv_final.player_sync_to_commentary()
@@ -377,7 +407,7 @@ class Mvf1Adapter:
 
             log.info(
                 "sync_result",
-                player_id=new_player.id if new_player else None,
+                player_id=new_player.id,
                 target_time=target_time,
                 success=sync_success,
                 path=sync_path,
@@ -387,7 +417,7 @@ class Mvf1Adapter:
                 "mvf1_switch_success",
                 slot=slot_index,
                 new_tla=new_tla,
-                player_id=new_player.id if new_player else 0,
+                player_id=new_player.id,
             )
             return True
         except Exception as e:

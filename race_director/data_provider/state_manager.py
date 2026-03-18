@@ -181,13 +181,32 @@ class StateManager:
                 self._states[num].interval_behind = None
 
     def ingest_positions(self, records: list[dict]) -> None:
+        now = datetime.now(UTC)
+        latest_by_driver: dict[int, tuple[str, int]] = {}
         for rec in records:
             num = rec.get("driver_number")
             pos = rec.get("position")
-            if num is None or num not in self._states:
+            date_str = rec.get("date", "")
+            if num is None or num not in self._states or pos is None:
                 continue
-            if pos is not None:
-                self._states[num].position = int(pos)
+            new_pos = int(pos)
+            date_key = date_str if date_str else "0000-01-01T00:00:00"
+            if num not in latest_by_driver or date_key > latest_by_driver[num][0]:
+                latest_by_driver[num] = (date_key, new_pos)
+
+        for num, (_date_str, new_pos) in latest_by_driver.items():
+            old_pos = self._states[num].position
+            if old_pos > 0 and new_pos > 0 and old_pos != new_pos:
+                positions_gained = old_pos - new_pos
+                if positions_gained >= 1:
+                    self._states[num].last_overtake_time = now
+                    self._states[num].was_overtaker = True
+                    self._recent_overtakes[num] = (now, True)
+                elif positions_gained <= -1:
+                    self._states[num].last_overtake_time = now
+                    self._states[num].was_overtaker = False
+                    self._recent_overtakes[num] = (now, False)
+            self._states[num].position = new_pos
 
     def set_grid_positions(self, grid_positions: dict[int, int]) -> None:
         """Set start/grid position per driver (from session start order)."""
@@ -196,17 +215,27 @@ class StateManager:
                 self._states[num].grid_position = grid_pos
 
     def ingest_laps(self, records: list[dict]) -> None:
-        """Ingest lap data — tracks current lap number per driver."""
-        max_lap = self._lap_number
+        """Ingest lap data — derive current lap from most recent records."""
+        if not records:
+            return
+        latest_date = None
+        latest_lap = self._lap_number
         for rec in records:
             lap = rec.get("lap_number")
+            date_str = rec.get("date", "")
             if lap is None:
                 continue
-            if isinstance(lap, int) and lap > max_lap:
-                max_lap = lap
-        if max_lap > self._lap_number:
-            self.set_lap_number(max_lap)
-            log.info("lap_number_updated", lap=max_lap)
+            try:
+                date = datetime.fromisoformat(date_str) if date_str else None
+            except (ValueError, TypeError):
+                date = None
+            if date is not None and isinstance(lap, int):
+                if latest_date is None or date > latest_date:
+                    latest_date = date
+                    latest_lap = lap
+        if latest_lap != self._lap_number:
+            self.set_lap_number(latest_lap)
+            log.info("lap_number_updated", lap=latest_lap)
 
     def set_lap_number(self, lap: int) -> None:
         self._lap_number = lap
@@ -263,6 +292,7 @@ class StateManager:
                 self._states[overtaken].was_overtaker = False
 
     def ingest_pit(self, records: list[dict]) -> None:
+        """Track pit activity. OpenF1 fires on pit EXIT with duration."""
         for rec in records:
             num = rec.get("driver_number")
             if num is None or num not in self._states:
@@ -274,19 +304,11 @@ class StateManager:
             except (ValueError, TypeError):
                 date = datetime.now(UTC)
 
-            pit_duration = rec.get("pit_duration")
-
-            if pit_duration is not None and pit_duration > 0:
-                self._pit_exits[num] = date
-                self._states[num].pit_exit_time = date
-                self._states[num].last_pit_lap = rec.get("lap_number")
-                self._states[num].in_pit = False
-                self._in_pit.discard(num)
-                self._in_pit_since.pop(num, None)
-            else:
-                self._states[num].in_pit = True
-                self._in_pit.add(num)
-                self._in_pit_since[num] = date
+            self._states[num].pit_exit_time = date
+            self._states[num].last_pit_lap = rec.get("lap_number")
+            self._states[num].in_pit = False
+            self._in_pit.discard(num)
+            self._in_pit_since.pop(num, None)
 
     def ingest_race_control(self, records: list[dict]) -> None:
         now = datetime.now(UTC)

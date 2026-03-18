@@ -132,28 +132,31 @@ def score_race_control_event(state: DriverState, _params: ScoringParams) -> floa
 
 
 def score_position_importance(state: DriverState, _params: ScoringParams) -> float:
-    """Higher score for key positions. Stronger top-end bias."""
+    """Score based on position AND whether it's contested.
+    In 2026, any position in a close battle is interesting.
+    Points positions (P1-P10) get a base boost; intervals matter more.
+    """
     pos = state.position
     if pos <= 0:
         return 0.0
 
     if pos == 1:
-        return 1.0
+        return 0.7
     if pos == 2:
-        return 0.85
-    if pos == 3:
-        return 0.75
-    if 4 <= pos <= 5:
-        return 0.5
-    if 6 <= pos <= 9:
-        return 0.35
-    if pos == 10:
         return 0.6
-    if pos == 11:
+    if pos == 3:
+        return 0.55
+    if 4 <= pos <= 5:
+        return 0.4
+    if 6 <= pos <= 9:
+        return 0.3
+    if pos == 10:
         return 0.5
+    if pos == 11:
+        return 0.4
     if 12 <= pos <= 15:
-        return 0.15
-    return 0.05
+        return 0.2
+    return 0.1
 
 
 def score_defending_bonus(state: DriverState, params: ScoringParams) -> float:

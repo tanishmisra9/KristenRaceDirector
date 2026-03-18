@@ -155,6 +155,42 @@ class OpenF1RestProvider:
         except httpx.HTTPError as e:
             log.debug("starting_grid_fetch_failed", error=str(e))
 
+        if not self._grid_fetched and self._session_key:
+            url = f"{self._config.openf1.base_url}/position"
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self._config.openf1.request_timeout_sec
+                ) as c:
+                    r = await c.get(
+                        url,
+                        params={"session_key": self._session_key},
+                        headers=headers,
+                    )
+                    r.raise_for_status()
+                    data = r.json()
+                    if isinstance(data, list) and data:
+                        earliest: dict[int, tuple[str, int]] = {}
+                        for rec in data:
+                            num = rec.get("driver_number")
+                            pos = rec.get("position")
+                            date_str = rec.get("date", "")
+                            if num is not None and pos is not None:
+                                date_key = (
+                                    date_str if date_str else "9999-12-31T23:59:59"
+                                )
+                                if (
+                                    num not in earliest
+                                    or date_key < earliest[num][0]
+                                ):
+                                    earliest[num] = (date_key, int(pos))
+                        grid = {num: pos for num, (_, pos) in earliest.items()}
+                        if grid:
+                            self._state.set_grid_positions(grid)
+                            self._grid_fetched = True
+                            log.info("grid_from_positions", count=len(grid))
+            except httpx.HTTPError:
+                pass
+
     def _ingest_race_control(self, records: list[dict]) -> None:
         self._state.ingest_race_control(records)
 
