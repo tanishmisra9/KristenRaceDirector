@@ -109,7 +109,12 @@ class Mvf1Adapter:
                 self._slot_assignments = {i: str(p.id) for i, p in enumerate(sorted_players)}
                 self._initialized = True
             else:
-                dead_slots = [s for s, pid in self._slot_assignments.items() if pid not in current_player_ids]
+                dead_slots = [
+                    s for s, pid in self._slot_assignments.items()
+                    if pid not in current_player_ids
+                ]
+                if dead_slots:
+                    log.info("dead_slots_removed", slots=dead_slots)
                 for s in dead_slots:
                     del self._slot_assignments[s]
                 assigned_pids = set(self._slot_assignments.values())
@@ -281,53 +286,102 @@ class Mvf1Adapter:
             old_ids = {str(p.id) for p in players}
             player.switch_stream(new_tla)
 
-            time.sleep(self._config.sync_delay_sec)
-            mv = MultiViewerForF1()
-            new_players = self._get_onboard_players(mv)
-
-            new_player = None
-            for p in sorted(new_players, key=lambda x: str(x.id), reverse=True):
-                if str(p.id) not in old_ids:
-                    new_player = p
-                    break
-            if new_player is None and new_players:
-                new_player = new_players[-1]
-
-            if new_player:
-                new_pid = str(new_player.id)
-                self._slot_assignments[slot_index] = new_pid
-                log.info(
-                    "slot_assignment_updated",
-                    slot=slot_index,
-                    old_player_id=old_player_id,
-                    new_player_id=new_pid,
-                )
+            SYNC_ATTEMPTS = 4
+            SYNC_RETRY_DELAY = 1.5
+            SYNC_MIN_TIME = 10.0
 
             sync_success = False
             sync_path = "none"
-            if new_player and target_time is not None:
-                seek_ok = self._sync_player_to_time(new_player.id, target_time)
-                commentary_id = str(commentary.id) if commentary else None
-                if commentary_id:
-                    sync_ok = self._sync_via_player_sync(commentary_id)
-                    sync_success = sync_ok
-                    sync_path = "seek_then_playerSync" if seek_ok else "playerSync_only"
-                else:
-                    try:
-                        mv.player_sync_to_commentary()
-                        sync_success = True
-                        sync_path = "seek_then_global" if seek_ok else "global_only"
-                    except Exception as e:
-                        log.warning("sync_fallback_failed", error=str(e))
-                        sync_success = seek_ok
-                        sync_path = "seek_only"
-                log.info(
-                    "sync_result",
-                    player_id=new_player.id,
-                    target_time=target_time,
-                    success=sync_success,
-                    path=sync_path,
+            new_player = None
+            commentary_id = str(commentary.id) if commentary else None
+
+            for attempt in range(1, SYNC_ATTEMPTS + 1):
+                time.sleep(SYNC_RETRY_DELAY if attempt == 1 else 1.0)
+
+                mv = MultiViewerForF1()
+                new_players = self._get_onboard_players(mv)
+
+                if new_player is None:
+                    for p in sorted(new_players, key=lambda x: str(x.id), reverse=True):
+                        if str(p.id) not in old_ids:
+                            new_player = p
+                            break
+                    if new_player is None and new_players:
+                        new_player = new_players[-1]
+
+                    if new_player:
+                        new_pid = str(new_player.id)
+                        self._slot_assignments[slot_index] = new_pid
+                        log.info(
+                            "slot_assignment_updated",
+                            slot=slot_index,
+                            old_player_id=old_player_id,
+                            new_player_id=new_pid,
+                        )
+
+                if new_player is None:
+                    log.warning("sync_no_new_player", attempt=attempt)
+                    continue
+
+                refreshed = next(
+                    (p for p in new_players if str(p.id) == str(new_player.id)),
+                    new_player,
                 )
+
+                if target_time is not None:
+                    self._sync_player_to_time(refreshed.id, target_time)
+                if commentary_id:
+                    self._sync_via_player_sync(commentary_id)
+
+                player_time = None
+                try:
+                    state = getattr(refreshed, "state", None) or {}
+                    player_time = state.get("interpolatedCurrentTime") or state.get("currentTime")
+                except Exception:
+                    pass
+
+                if player_time is not None and not (math.isnan(player_time) or math.isinf(player_time)):
+                    if target_time is not None and player_time >= SYNC_MIN_TIME:
+                        drift = abs(player_time - target_time)
+                        sync_success = True
+                        sync_path = f"verified_attempt_{attempt}"
+                        log.info(
+                            "sync_verified",
+                            attempt=attempt,
+                            player_time=round(player_time, 1),
+                            target_time=round(target_time, 1),
+                            drift=round(drift, 1),
+                        )
+                        break
+                    elif target_time is None:
+                        sync_success = True
+                        sync_path = f"no_target_attempt_{attempt}"
+                        break
+
+                log.info(
+                    "sync_retry",
+                    attempt=attempt,
+                    player_time=player_time,
+                    target_time=target_time,
+                )
+
+            if not sync_success and new_player:
+                try:
+                    mv_final = MultiViewerForF1()
+                    mv_final.player_sync_to_commentary()
+                    sync_path = "final_global_sync"
+                    sync_success = True
+                except Exception as e:
+                    log.warning("final_sync_failed", error=str(e))
+                    sync_path = "all_failed"
+
+            log.info(
+                "sync_result",
+                player_id=new_player.id if new_player else None,
+                target_time=target_time,
+                success=sync_success,
+                path=sync_path,
+            )
 
             log.info(
                 "mvf1_switch_success",
