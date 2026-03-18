@@ -63,6 +63,7 @@ orchestrator:
   tick_interval_sec: 4.0
   dry_run: false
   manual_override_file: "/tmp/race_director_pause"
+  startup_grace_ticks: 3
 
 logging:
   level: "INFO"

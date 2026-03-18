@@ -27,6 +27,7 @@ class Orchestrator:
         self._scorer = BattleScorer(config.scoring_weights, config.scoring_params)
         self._hysteresis = HysteresisEngine(config.hysteresis)
         self._tick_count = 0
+        self._last_leader: int | None = None
         self._adapter = None
         if config.orchestrator.dry_run:
             from race_director.multiviewer_adapter.dry_run import DryRunAdapter
@@ -89,6 +90,56 @@ class Orchestrator:
             session=session,
             cooldown_seconds=self._config.hysteresis.removal_cooldown_seconds,
         )
+        if self._tick_count <= self._config.orchestrator.startup_grace_ticks:
+            log.info(
+                "startup_grace_period",
+                tick=self._tick_count,
+                remaining=self._config.orchestrator.startup_grace_ticks - self._tick_count,
+            )
+            on_screen = [w.current_tla for w in windows if w.current_tla]
+            log.info("tick_end", tick=self._tick_count, on_screen=on_screen, swaps_executed=0)
+            return
+        current_leader = None
+        for num, state in states.items():
+            if state.position == 1:
+                current_leader = num
+                break
+        if current_leader and self._last_leader and current_leader != self._last_leader:
+            leader_tla = states[current_leader].tla if current_leader in states else None
+            if leader_tla:
+                already_on_screen = any(
+                    w.current_tla.upper() == leader_tla.upper() for w in windows if w.current_tla
+                )
+                if not already_on_screen:
+                    ranked_by_num = {r.driver_number: r for r in ranked}
+                    worst_slot = None
+                    worst_score = float("inf")
+                    for w in windows:
+                        if w.current_driver_number and w.current_driver_number in ranked_by_num:
+                            score = ranked_by_num[w.current_driver_number].total_score
+                            if score < worst_score:
+                                worst_score = score
+                                worst_slot = w
+                    if worst_slot and self._adapter:
+                        log.info(
+                            "lead_change_detected",
+                            old_leader=self._last_leader,
+                            new_leader=current_leader,
+                            new_tla=leader_tla,
+                            replacing_slot=worst_slot.slot_index,
+                        )
+                        if self._adapter.switch_window(
+                            worst_slot.slot_index,
+                            leader_tla,
+                            player_id=worst_slot.player_id,
+                        ):
+                            if worst_slot.slot_index < len(windows) and windows[worst_slot.slot_index].current_driver_number:
+                                self._scorer.record_removal(windows[worst_slot.slot_index].current_driver_number)
+                            windows[worst_slot.slot_index].current_tla = leader_tla
+                            windows[worst_slot.slot_index].current_driver_number = current_leader
+                            windows[worst_slot.slot_index].assigned_at = datetime.now(UTC)
+                            self._hysteresis.record_swaps(1)
+        self._last_leader = current_leader
         if self._tick_count % 6 == 0:
             log.info(
                 "scoring_snapshot",

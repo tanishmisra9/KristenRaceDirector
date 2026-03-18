@@ -56,6 +56,35 @@ class StateManager:
         # Battle duration: consecutive samples with small gap
         self._battle_start: dict[int, datetime] = {}
 
+        # Timestamp tracking for replay: only process new records per endpoint
+        self._last_processed_date: dict[str, str] = {}
+
+    def _filter_new_records(self, endpoint: str, records: list[dict]) -> list[dict]:
+        """Filter records to only those newer than the last processed date for this endpoint."""
+        last_date = self._last_processed_date.get(endpoint)
+        if last_date is None:
+            if not records:
+                return []
+            all_dates = [r.get("date", "") for r in records if r.get("date")]
+            if not all_dates:
+                return records
+            max_date = max(all_dates)
+            try:
+                max_dt = datetime.fromisoformat(max_date.replace("Z", "+00:00"))
+                cutoff = max_dt - timedelta(seconds=30)
+                cutoff_str = cutoff.isoformat()
+                new_records = [r for r in records if r.get("date", "") >= cutoff_str]
+                if new_records:
+                    self._last_processed_date[endpoint] = max(r.get("date", "") for r in new_records)
+                return new_records
+            except (ValueError, TypeError):
+                self._last_processed_date[endpoint] = max_date
+                return records
+        new_records = [r for r in records if r.get("date", "") > last_date]
+        if new_records:
+            self._last_processed_date[endpoint] = max(r.get("date", "") for r in new_records)
+        return new_records
+
     def set_session(self, info: SessionInfo) -> None:
         self._session = info
 
@@ -85,6 +114,7 @@ class StateManager:
                 )
 
     def ingest_intervals(self, records: list[dict]) -> None:
+        records = self._filter_new_records("intervals", records)
         for rec in records:
             num = rec.get("driver_number")
             if num is None or num not in self._states:
@@ -181,6 +211,7 @@ class StateManager:
                 self._states[num].interval_behind = None
 
     def ingest_positions(self, records: list[dict]) -> None:
+        records = self._filter_new_records("positions", records)
         now = datetime.now(UTC)
         latest_by_driver: dict[int, tuple[str, int]] = {}
         for rec in records:
@@ -216,6 +247,7 @@ class StateManager:
 
     def ingest_laps(self, records: list[dict]) -> None:
         """Ingest lap data — derive current lap from most recent records."""
+        records = self._filter_new_records("laps", records)
         if not records:
             return
         latest_date = None
@@ -271,6 +303,7 @@ class StateManager:
             )
 
     def ingest_overtakes(self, records: list[dict]) -> None:
+        records = self._filter_new_records("overtakes", records)
         for rec in records:
             date_str = rec.get("date", "")
             try:
@@ -311,6 +344,7 @@ class StateManager:
             self._in_pit_since.pop(num, None)
 
     def ingest_race_control(self, records: list[dict]) -> None:
+        records = self._filter_new_records("race_control", records)
         now = datetime.now(UTC)
         for rec in records:
             category = rec.get("category", "")

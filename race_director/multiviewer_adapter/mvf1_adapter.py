@@ -228,6 +228,28 @@ class Mvf1Adapter:
         except Exception:
             return False
 
+    def _set_player_bounds(self, player_id: str, x: int, y: int, width: int, height: int) -> bool:
+        """Set player position and size via GraphQL."""
+        query = """
+        mutation PlayerSetBounds($id: ID!, $x: Int, $y: Int, $width: Int, $height: Int) {
+            playerSetBounds(id: $id, x: $x, y: $y, width: $width, height: $height)
+        }
+        """
+        try:
+            result = self._graphql_request(
+                query,
+                variables={
+                    "id": str(player_id),
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                },
+            )
+            return not result.get("errors")
+        except Exception:
+            return False
+
     def _sync_via_player_sync(self, commentary_player_id: str) -> bool:
         """Sync all players to commentary via playerSync mutation (same as pressing S)."""
         query = """
@@ -299,6 +321,29 @@ class Mvf1Adapter:
                 log.warning("commentary_time_invalid", target_time=target_time)
                 target_time = None
 
+            old_bounds = None
+            try:
+                state = getattr(player, "state", None) or {}
+                bounds = state.get("bounds") if isinstance(state, dict) else None
+                if bounds and isinstance(bounds, dict):
+                    x = bounds.get("x")
+                    y = bounds.get("y")
+                    w = bounds.get("width")
+                    h = bounds.get("height")
+                    if x is not None and y is not None and w is not None and h is not None:
+                        old_bounds = {"x": int(x), "y": int(y), "width": int(w), "height": int(h)}
+                if old_bounds is None and (
+                    hasattr(player, "x") and hasattr(player, "y") and hasattr(player, "width") and hasattr(player, "height")
+                ):
+                    old_bounds = {
+                        "x": int(getattr(player, "x", 0)),
+                        "y": int(getattr(player, "y", 0)),
+                        "width": int(getattr(player, "width", 640)),
+                        "height": int(getattr(player, "height", 360)),
+                    }
+            except Exception:
+                pass
+
             old_ids = {str(p.id) for p in players}
             try:
                 player.switch_stream(new_tla)
@@ -355,6 +400,8 @@ class Mvf1Adapter:
                     new_player_id=new_pid,
                 )
                 self._set_player_muted(new_pid, True)
+                if old_bounds:
+                    self._set_player_bounds(new_pid, old_bounds["x"], old_bounds["y"], 1, 1)
 
             sync_success = False
             sync_path = "none"
@@ -430,7 +477,14 @@ class Mvf1Adapter:
                 path=sync_path,
             )
 
-            self._set_player_muted(str(new_player.id), False)
+            if old_bounds:
+                self._set_player_bounds(
+                    str(new_player.id),
+                    old_bounds["x"],
+                    old_bounds["y"],
+                    old_bounds["width"],
+                    old_bounds["height"],
+                )
 
             log.info(
                 "mvf1_switch_success",
