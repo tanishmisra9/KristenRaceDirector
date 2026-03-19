@@ -24,6 +24,7 @@ from race_director.battle_engine.dimensions import (
     score_race_control_event,
     score_screen_time_penalty,
     score_session_phase,
+    score_stale_battle_penalty,
 )
 from race_director.config.schema import ScoringParams, ScoringWeights
 from race_director.models.driver import DriverState
@@ -109,6 +110,7 @@ class BattleScorer:
                 screen_time_penalty=score_screen_time_penalty(
                     state, current_windows, p, ref_time
                 ),
+                stale_battle_penalty=score_stale_battle_penalty(state, p, ref_time),
             )
 
             total = (
@@ -129,6 +131,7 @@ class BattleScorer:
                 + bd.defending_bonus * w.defending_bonus
                 + bd.incident_recovery * w.incident_recovery
                 + bd.screen_time_penalty * w.screen_time_penalty
+                + bd.stale_battle_penalty * w.stale_battle_penalty
             )
 
             results.append(

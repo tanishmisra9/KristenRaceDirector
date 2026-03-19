@@ -38,6 +38,7 @@ class ScoringWeights(BaseModel):
     defending_bonus: float = 0.6
     incident_recovery: float = 2.0
     screen_time_penalty: float = -1.0
+    stale_battle_penalty: float = -0.8
 
 
 class ScoringParams(BaseModel):
@@ -50,14 +51,14 @@ class ScoringParams(BaseModel):
     prolonged_battle_midpoint_sec: float = 45.0
     position_gain_max: int = 10
     incident_recovery_window_sec: float = 60.0
-    screen_time_penalty_midpoint_sec: float = 90.0
-    screen_time_penalty_steepness: float = 0.07
+    screen_time_penalty_midpoint_sec: float = 60.0
+    screen_time_penalty_steepness: float = 0.08
 
 
 class HysteresisConfig(BaseModel):
     min_dwell_seconds: float = 12.0
     swap_improvement_threshold: float = 0.15
-    max_switches_per_cycle: int = 2
+    max_switches_per_cycle: int = 1
     max_switches_per_minute: int = 6
     removal_cooldown_seconds: float = 25.0
     sprint_min_dwell_seconds: float = 8.0
@@ -72,7 +73,7 @@ class OrchestratorConfig(BaseModel):
     tick_interval_sec: float = 5.0
     dry_run: bool = False
     manual_override_file: str = "/tmp/race_director_pause"
-    startup_grace_ticks: int = 2
+    startup_grace_ticks: int = 1
 
 
 class LoggingConfig(BaseModel):

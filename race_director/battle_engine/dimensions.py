@@ -133,12 +133,16 @@ def score_race_control_event(state: DriverState, _params: ScoringParams) -> floa
 
 
 def score_position_importance(state: DriverState, _params: ScoringParams) -> float:
-    """Higher score for key positions: podium > points cutoff > midfield."""
+    """Higher score for key positions: podium > points cutoff > midfield.
+    Leader is penalized when cruising with no pressure behind."""
     pos = state.position
     if pos <= 0:
         return 0.0
     if pos == 1:
-        return 1.0
+        # Leader only gets full score if under pressure
+        if state.interval_behind is not None and state.interval_behind < 2.0:
+            return 1.0  # Under attack — compelling
+        return 0.4  # Cruising — not interesting as an onboard
     if pos == 2:
         return 0.9
     if pos == 3:
@@ -154,6 +158,23 @@ def score_position_importance(state: DriverState, _params: ScoringParams) -> flo
     if 6 <= pos <= 9:
         return 0.2
     return 0.1
+
+
+def score_stale_battle_penalty(
+    state: DriverState,
+    params: ScoringParams,
+    reference_time: datetime,
+) -> float:
+    """Penalty for drivers stuck in a close train with no overtaking."""
+    if state.battle_duration_seconds < 30.0:
+        return 0.0
+    if state.last_overtake_time is not None:
+        elapsed_since_ot = (reference_time - state.last_overtake_time).total_seconds()
+        if elapsed_since_ot < params.overtake_decay_seconds:
+            return 0.0
+    duration = state.battle_duration_seconds
+    penalty = min(1.0, (duration - 30.0) / 60.0)
+    return penalty
 
 
 def score_defending_bonus(state: DriverState, params: ScoringParams) -> float:

@@ -27,6 +27,7 @@ class ScoringBreakdown(BaseModel):
     defending_bonus: float = 0.0
     incident_recovery: float = 0.0
     screen_time_penalty: float = 0.0
+    stale_battle_penalty: float = 0.0
 
 
 class ScoringResult(BaseModel):
