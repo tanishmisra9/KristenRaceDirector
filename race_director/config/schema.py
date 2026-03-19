@@ -76,7 +76,7 @@ class OrchestratorConfig(BaseModel):
     tick_interval_sec: float = 4.0
     dry_run: bool = False
     manual_override_file: str = "/tmp/race_director_pause"
-    startup_grace_ticks: int = 3
+    startup_grace_ticks: int = 2
 
 
 class LoggingConfig(BaseModel):

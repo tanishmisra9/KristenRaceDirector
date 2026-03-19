@@ -109,7 +109,9 @@ class HysteresisEngine:
             for i, (slot_idx, slot_score) in enumerate(swappable):
                 improvement = candidate.total_score - slot_score
                 if improvement >= cfg.swap_improvement_threshold:
-                    slot = current_windows[slot_idx]
+                    slot = next((w for w in current_windows if w.slot_index == slot_idx), None)
+                    if slot is None:
+                        continue
                     swap = SwapCommand(
                         slot_index=slot_idx,
                         player_id=slot.player_id or 0,

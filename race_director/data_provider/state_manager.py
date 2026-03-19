@@ -60,29 +60,24 @@ class StateManager:
         self._last_processed_date: dict[str, str] = {}
 
     def _filter_new_records(self, endpoint: str, records: list[dict]) -> list[dict]:
-        """Filter records to only those newer than the last processed date for this endpoint."""
+        """Filter records to only those newer than the last processed date.
+
+        First call: process ALL records to establish baseline state.
+        Subsequent calls: only process new records (delta).
+        """
         last_date = self._last_processed_date.get(endpoint)
+
         if last_date is None:
-            if not records:
-                return []
             all_dates = [r.get("date", "") for r in records if r.get("date")]
-            if not all_dates:
-                return records
-            max_date = max(all_dates)
-            try:
-                max_dt = datetime.fromisoformat(max_date.replace("Z", "+00:00"))
-                cutoff = max_dt - timedelta(seconds=30)
-                cutoff_str = cutoff.isoformat()
-                new_records = [r for r in records if r.get("date", "") >= cutoff_str]
-                if new_records:
-                    self._last_processed_date[endpoint] = max(r.get("date", "") for r in new_records)
-                return new_records
-            except (ValueError, TypeError):
-                self._last_processed_date[endpoint] = max_date
-                return records
+            if all_dates:
+                self._last_processed_date[endpoint] = max(all_dates)
+            return records
+
         new_records = [r for r in records if r.get("date", "") > last_date]
         if new_records:
-            self._last_processed_date[endpoint] = max(r.get("date", "") for r in new_records)
+            dates = [r.get("date", "") for r in new_records if r.get("date")]
+            if dates:
+                self._last_processed_date[endpoint] = max(dates)
         return new_records
 
     def set_session(self, info: SessionInfo) -> None:
