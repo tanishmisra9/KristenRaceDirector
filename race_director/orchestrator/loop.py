@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import structlog
@@ -20,7 +20,7 @@ log = structlog.get_logger()
 class Orchestrator:
     """Ties together data provider, scorer, hysteresis, and MultiViewer adapter."""
 
-    def __init__(self, config: AppConfig, replay_path: str | None = None) -> None:
+    def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._shutting_down = False
         self._provider = OpenF1RestProvider(config)

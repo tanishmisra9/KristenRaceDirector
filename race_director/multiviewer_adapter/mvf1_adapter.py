@@ -192,29 +192,6 @@ class Mvf1Adapter:
             log.warning("graphql_request_failed", error=str(e))
             raise
 
-    def _sync_player_to_time(self, player_id: int | str, target_time: float) -> bool:
-        """Seek a player to absolute time via GraphQL playerSeekTo mutation."""
-        query = """
-        mutation PlayerSeekTo($id: ID!, $absolute: Float) {
-            playerSeekTo(id: $id, absolute: $absolute)
-        }
-        """
-        try:
-            result = self._graphql_request(
-                query,
-                variables={"id": str(player_id), "absolute": target_time},
-            )
-            if result.get("errors"):
-                log.warning(
-                    "playerSeekTo_errors",
-                    player_id=player_id,
-                    errors=result["errors"],
-                )
-                return False
-            return True
-        except Exception:
-            return False
-
     def _set_player_muted(self, player_id: str, muted: bool) -> bool:
         """Mute or unmute a player via GraphQL."""
         query = """
@@ -249,19 +226,6 @@ class Mvf1Adapter:
             return True
         except Exception as e:
             log.warning("playerSync_failed", error=str(e))
-            return False
-
-    def _sync_all_to_main_broadcast(self, mv) -> bool:
-        """Sync all players to main broadcast. Retries with backoff."""
-        commentary = self._find_commentary_player(mv)
-        if not commentary:
-            log.warning("no_commentary_player_found", hint="Ensure F1 Live or International is open")
-            return False
-        try:
-            commentary.sync()
-            return True
-        except Exception as e:
-            log.warning("sync_to_commentary_failed", error=str(e))
             return False
 
     def switch_window(self, slot_index: int, new_tla: str, player_id: int | None = None) -> bool:

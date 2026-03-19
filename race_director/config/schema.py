@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -11,7 +9,6 @@ class OpenF1Config(BaseModel):
     base_url: str = "https://api.openf1.org/v1"
     username: str = ""
     password: str = ""
-    use_mqtt: bool = False
     poll_interval_sec: float = 4.0
     request_timeout_sec: float = 5.0
 
@@ -21,50 +18,49 @@ class MultiViewerConfig(BaseModel):
     player_ids: list[int] = Field(default_factory=list)
     num_windows: int | None = None
     sync_delay_sec: float = 1.2
-    sync_strategy: Literal["seek_only", "global_fallback"] = "global_fallback"
 
 
 class ScoringWeights(BaseModel):
-    interval_ahead: float = 0.8
-    interval_behind: float = 0.6
+    interval_ahead: float = 1.0
+    interval_behind: float = 0.7
     closing_trend: float = 0.8
     proximity_cluster: float = 0.5
     overtake_recency: float = 3.0
     pit_exit_traffic: float = 0.8
-    race_control_event: float = 1.5
+    race_control_event: float = 1.0
     position_importance: float = 1.5
-    anti_churn_penalty: float = -0.2
-    on_screen_retention: float = 0.2
-    overtake_mode_attack: float = 1.0
+    anti_churn_penalty: float = -0.6
+    on_screen_retention: float = 0.4
+    overtake_mode_attack: float = 0.8
     position_gain: float = 2.0
-    prolonged_battle: float = 1.2
+    prolonged_battle: float = 0.7
     session_phase: float = 1.5
-    defending_bonus: float = 1.0
+    defending_bonus: float = 0.6
     incident_recovery: float = 2.0
     screen_time_penalty: float = -1.0
 
 
 class ScoringParams(BaseModel):
-    interval_sigmoid_midpoint_sec: float = 1.0
-    interval_sigmoid_steepness: float = 4.0
-    trend_window_samples: int = 5
+    interval_sigmoid_midpoint_sec: float = 1.5
+    interval_sigmoid_steepness: float = 3.0
+    trend_window_samples: int = 8
     overtake_decay_seconds: float = 30.0
-    pit_exit_window_seconds: float = 30.0
+    pit_exit_window_seconds: float = 45.0
     proximity_radius_units: float = 500
-    prolonged_battle_midpoint_sec: float = 30.0
-    position_gain_max: int = 8
-    incident_recovery_window_sec: float = 45.0
-    screen_time_penalty_midpoint_sec: float = 50.0
-    screen_time_penalty_steepness: float = 0.10
+    prolonged_battle_midpoint_sec: float = 45.0
+    position_gain_max: int = 10
+    incident_recovery_window_sec: float = 60.0
+    screen_time_penalty_midpoint_sec: float = 90.0
+    screen_time_penalty_steepness: float = 0.07
 
 
 class HysteresisConfig(BaseModel):
-    min_dwell_seconds: float = 10.0
-    swap_improvement_threshold: float = 0.10
+    min_dwell_seconds: float = 12.0
+    swap_improvement_threshold: float = 0.15
     max_switches_per_cycle: int = 2
-    max_switches_per_minute: int = 10
-    removal_cooldown_seconds: float = 15.0
-    sprint_min_dwell_seconds: float = 6.0
+    max_switches_per_minute: int = 6
+    removal_cooldown_seconds: float = 25.0
+    sprint_min_dwell_seconds: float = 8.0
 
 
 class StickySlotConfig(BaseModel):
@@ -73,7 +69,7 @@ class StickySlotConfig(BaseModel):
 
 
 class OrchestratorConfig(BaseModel):
-    tick_interval_sec: float = 4.0
+    tick_interval_sec: float = 5.0
     dry_run: bool = False
     manual_override_file: str = "/tmp/race_director_pause"
     startup_grace_ticks: int = 2
@@ -81,7 +77,7 @@ class OrchestratorConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     level: str = "INFO"
-    format: str = "json"
+    format: str = "console"
     file: str | None = None
 
 

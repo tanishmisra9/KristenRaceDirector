@@ -7,7 +7,7 @@ import asyncio
 import httpx
 import structlog
 
-from race_director.config.schema import AppConfig, OpenF1Config
+from race_director.config.schema import AppConfig
 from race_director.data_provider.openf1_auth import OpenF1TokenManager
 from race_director.data_provider.state_manager import StateManager
 from race_director.models.session import SessionInfo
@@ -75,7 +75,6 @@ class OpenF1RestProvider:
                     await self._fetch(c, endpoint, handler, headers)
                     await asyncio.sleep(RATE_LIMIT_DELAY_SEC)
         self._state.expire_stale_events()
-        self._update_session_context()
 
     async def _fetch_session(self) -> None:
         cfg = self._config.openf1
@@ -114,10 +113,6 @@ class OpenF1RestProvider:
                     self._state.set_session_type(stype)
             except httpx.HTTPError as e:
                 log.debug("session_fetch_failed", error=str(e))
-
-    def _update_session_context(self) -> None:
-        """lap_number and grid_positions are now populated by ingest_laps and _fetch_starting_grid."""
-        pass
 
     async def _fetch_starting_grid(self, headers: dict[str, str]) -> None:
         """Fetch starting grid once per session."""

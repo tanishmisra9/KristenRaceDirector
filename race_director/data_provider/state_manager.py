@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections import deque
 from datetime import UTC, datetime, timedelta
 
@@ -286,11 +285,6 @@ class StateManager:
         if self._session:
             self._session.lap_number = lap
 
-    def set_restart_lap(self, is_restart: bool) -> None:
-        self._restart_lap = is_restart
-        if self._session:
-            self._session.restart_lap = is_restart
-
     def set_session_type(self, session_type: str) -> None:
         if self._session:
             self._session.session_type = session_type
@@ -428,14 +422,6 @@ class StateManager:
             if num in self._states:
                 self._states[num].drs_open = val in drs_overtake_values
                 self._states[num].overtake_mode_active = val in drs_overtake_values
-
-    def ingest_championship(self, records: list[dict]) -> None:
-        for rec in records:
-            num = rec.get("driver_number")
-            if num is None or num not in self._states:
-                continue
-            self._states[num].championship_position = rec.get("position_current")
-            self._states[num].championship_points = rec.get("points_current")
 
     def expire_stale_events(self) -> None:
         ref = self._latest_data_time

@@ -2,7 +2,6 @@ openf1:
   base_url: "https://api.openf1.org/v1"
   username: ""
   password: ""
-  use_mqtt: false
   poll_interval_sec: 4.0
   request_timeout_sec: 5.0
 
@@ -10,7 +9,6 @@ multiviewer:
   uri: "http://localhost:10101/api/graphql"
   player_ids: []
   sync_delay_sec: 1.2
-  sync_strategy: "global_fallback"
   # num_windows: auto-detects from open player windows. Set explicitly to override.
 
 scoring_weights:

@@ -1,5 +1,6 @@
 # Local config with secrets (never commit)
 config.local.yaml
+ERROR_REPORT.md
 *.local.yaml
 .env
 .env.local

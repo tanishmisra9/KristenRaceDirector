@@ -79,10 +79,6 @@ class DriverState(BaseModel):
     # Metadata
     last_updated: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    # Championship context
-    championship_position: int | None = None
-    championship_points: float | None = None
-
     # 2026 scoring additions
     grid_position: int = 0  # start position; 0 = unknown
     recent_incident_time: datetime | None = None

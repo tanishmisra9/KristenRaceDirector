@@ -42,7 +42,17 @@ def setup_logging(level: str, fmt: str, log_file: str | None) -> None:
 
 
 def main() -> None:
-    print("Race Director starting...", flush=True)
+    BANNER = """
+╔══════════════════════════════════════════════════════╗
+║                                                      ║
+║            KRISTEN RACE DIRECTOR                     ║
+║       MultiViewer Onboard Camera Automation          ║
+║                                                      ║
+║               Formula 1 @ Purdue                     ║
+║                                                      ║
+╚══════════════════════════════════════════════════════╝
+"""
+    print(BANNER, flush=True)
     parser = argparse.ArgumentParser(description="MultiViewer for F1 camera automation")
     parser.add_argument("-c", "--config", default="config.yaml")
     parser.add_argument("--dry-run", action="store_true")
