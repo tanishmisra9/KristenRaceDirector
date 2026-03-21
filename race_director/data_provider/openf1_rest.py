@@ -218,6 +218,9 @@ class OpenF1RestProvider:
     def get_reference_time(self):
         return self._state.get_reference_time()
 
+    def is_lights_out(self) -> bool:
+        return self._state.is_lights_out()
+
     def get_driver_states(self):
         return self._state.get_driver_states()
 

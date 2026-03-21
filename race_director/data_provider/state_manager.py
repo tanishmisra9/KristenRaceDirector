@@ -61,9 +61,16 @@ class StateManager:
         # Latest data timestamp — used as reference time for scoring (replay/live)
         self._latest_data_time: datetime = datetime.now(UTC)
 
+        # Lights out: SESSION STARTED from race_control
+        self._lights_out: bool = False
+
     def get_reference_time(self) -> datetime:
         """Latest timestamp seen in any data feed. Used as 'now' for scoring."""
         return self._latest_data_time
+
+    def is_lights_out(self) -> bool:
+        """True if SESSION STARTED (lights out) has been detected."""
+        return self._lights_out
 
     def _filter_new_records(self, endpoint: str, records: list[dict]) -> list[dict]:
         """Filter records to only those newer than the last processed date.
@@ -385,6 +392,8 @@ class StateManager:
                     self._vsc = False
 
             if category == "SessionStatus":
+                if "started" in message:
+                    self._lights_out = True
                 for status_val in SessionStatus:
                     if status_val.value.lower() in message:
                         self._session_status = status_val.value

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import structlog
 
+from race_director import display
 from race_director.battle_engine.scorer import BattleScorer
 from race_director.config.schema import AppConfig
 from race_director.data_provider.openf1_rest import OpenF1RestProvider
@@ -27,6 +28,7 @@ class Orchestrator:
         self._scorer = BattleScorer(config.scoring_weights, config.scoring_params)
         self._hysteresis = HysteresisEngine(config.hysteresis)
         self._tick_count = 0
+        self._lights_out_seen: bool = False
         self._last_leader: int | None = None
         self._adapter = None
         if config.orchestrator.dry_run:
@@ -50,6 +52,7 @@ class Orchestrator:
         if self._adapter and self._adapter.is_available():
             windows = self._adapter.get_current_windows()
             log.info("windows_detected", count=len(windows))
+            display.show_startup(len(windows))
         try:
             while not self._shutting_down:
                 await self._tick()
@@ -92,11 +95,27 @@ class Orchestrator:
             cooldown_seconds=self._config.hysteresis.removal_cooldown_seconds,
             reference_time=ref_time,
         )
+        if not self._lights_out_seen:
+            if self._provider.is_lights_out():
+                self._lights_out_seen = True
+                self._tick_count = 0  # Reset tick counter — grace period starts now
+                display.show_lights_out()
+            else:
+                # Still waiting for lights out — don't process swaps yet
+                on_screen = [w.current_tla for w in windows if w.current_tla]
+                if self._tick_count % 6 == 0:
+                    display.show_waiting_for_start()
+                log.info("tick_end", tick=self._tick_count, on_screen=on_screen, swaps_executed=0)
+                return
         if self._tick_count <= self._config.orchestrator.startup_grace_ticks:
             log.info(
                 "startup_grace_period",
                 tick=self._tick_count,
                 remaining=self._config.orchestrator.startup_grace_ticks - self._tick_count,
+            )
+            display.show_grace_period(
+                self._tick_count,
+                self._config.orchestrator.startup_grace_ticks - self._tick_count,
             )
             on_screen = [w.current_tla for w in windows if w.current_tla]
             log.info("tick_end", tick=self._tick_count, on_screen=on_screen, swaps_executed=0)
@@ -130,6 +149,10 @@ class Orchestrator:
                             new_tla=leader_tla,
                             replacing_slot=worst_slot.slot_index,
                         )
+                        display.show_lead_change(
+                            states[self._last_leader].tla if self._last_leader in states else None,
+                            leader_tla,
+                        )
                         if self._adapter.switch_window(
                             worst_slot.slot_index,
                             leader_tla,
@@ -147,6 +170,7 @@ class Orchestrator:
                 "scoring_snapshot",
                 top=[{"tla": r.tla, "score": round(r.total_score, 3)} for r in ranked[:5]],
             )
+            display.show_scoring_snapshot([(r.tla, r.total_score) for r in ranked])
             if ranked:
                 top = ranked[0]
                 log.info(
@@ -195,6 +219,7 @@ class Orchestrator:
                     new_tla=swap.new_tla,
                     score_improvement=round(swap.score_improvement, 3),
                 )
+                display.show_swap(swap.old_tla, swap.new_tla, swap.slot_index)
                 if swap.slot_index < len(windows) and windows[swap.slot_index].current_driver_number:
                     self._scorer.record_removal(windows[swap.slot_index].current_driver_number, removed_at=ref_time)
                 windows[swap.slot_index].current_tla = swap.new_tla
@@ -215,3 +240,5 @@ class Orchestrator:
             on_screen=on_screen,
             swaps_executed=swaps_executed,
         )
+        if self._tick_count % 6 == 0 or swaps_executed > 0:
+            display.show_tick_status(self._tick_count, on_screen)

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 import httpx
 import structlog
 
+from race_director import display
 from race_director.config.schema import MultiViewerConfig, StickySlotConfig
 from race_director.models.scoring import WindowSlot
 
@@ -371,6 +372,7 @@ class Mvf1Adapter:
                         target_time=round(target_time, 1) if target_time else None,
                         drift=round(drift, 1),
                     )
+                    display.show_sync_result(new_tla, True, drift)
                     break
 
                 log.info(
@@ -388,6 +390,7 @@ class Mvf1Adapter:
                 except Exception as e:
                     log.warning("final_sync_failed", error=str(e))
                     sync_path = "all_failed"
+                    display.show_sync_result(new_tla, False)
 
             log.info(
                 "sync_result",
