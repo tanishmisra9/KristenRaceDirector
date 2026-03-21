@@ -6,8 +6,8 @@ from datetime import datetime
 
 
 def _ts() -> str:
-    """Short timestamp for display: HH:MM:SS."""
-    return datetime.now().strftime("%H:%M:%S")
+    """Short timestamp for display: HH:MM:SS AM/PM."""
+    return datetime.now().strftime("%I:%M:%S %p")
 
 
 def show_tick_status(tick: int, on_screen: list[str]) -> None:
@@ -79,6 +79,16 @@ def show_driver_list(tlas: list[str]) -> None:
     print(f"[{_ts()}]  Drivers confirmed: {', '.join(tlas)} ({len(tlas)} drivers)")
 
 
-def show_neutralized() -> None:
-    """Show that swaps are paused due to neutralization."""
-    print(f"[{_ts()}]  Safety Car / VSC active - cameras frozen")
+def show_safety_car_deployed() -> None:
+    """Show SC/VSC deployment."""
+    print(f"[{_ts()}]  Safety Car / VSC deployed - cameras frozen")
+
+
+def show_safety_car_ending() -> None:
+    """Show SC ending this lap."""
+    print(f"[{_ts()}]  Safety Car ending this lap")
+
+
+def show_racing_resumed() -> None:
+    """Show green flag."""
+    print(f"[{_ts()}]  Green flag - cameras active")

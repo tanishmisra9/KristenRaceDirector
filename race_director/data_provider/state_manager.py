@@ -64,6 +64,9 @@ class StateManager:
         # Lights out: SESSION STARTED from race_control
         self._lights_out: bool = False
 
+        # SC phase for display notifications: "none", "deployed", "ending", "green"
+        self._sc_phase: str = "none"
+
     def get_reference_time(self) -> datetime:
         """Latest timestamp seen in any data feed. Used as 'now' for scoring."""
         return self._latest_data_time
@@ -71,6 +74,10 @@ class StateManager:
     def is_lights_out(self) -> bool:
         """True if SESSION STARTED (lights out) has been detected."""
         return self._lights_out
+
+    def get_sc_phase(self) -> str:
+        """Return current SC phase: 'none', 'deployed', 'ending', 'green'."""
+        return self._sc_phase
 
     def _filter_new_records(self, endpoint: str, records: list[dict]) -> list[dict]:
         """Filter records to only those newer than the last processed date.
@@ -385,12 +392,15 @@ class StateManager:
             if category == "SafetyCar":
                 if "ending" in message or "in this lap" in message:
                     self._sc_ended_recently = True
+                    self._sc_phase = "ending"
                 elif "virtual safety car" in message or "vsc" in message:
                     self._vsc = True
                     self._safety_car = False
+                    self._sc_phase = "deployed"
                 elif "deployed" in message:
                     self._safety_car = True
                     self._vsc = False
+                    self._sc_phase = "deployed"
                 else:
                     self._safety_car = False
                     self._vsc = False
@@ -402,6 +412,18 @@ class StateManager:
                     if status_val.value.lower() in message:
                         self._session_status = status_val.value
                         break
+
+            # Detect green flag / track clear - clears SC and VSC state
+            if flag == "GREEN" and "track clear" in message:
+                self._safety_car = False
+                self._vsc = False
+                self._sc_ended_recently = False
+                self._sc_phase = "green"
+            if "overtake enabled" in message:
+                self._safety_car = False
+                self._vsc = False
+                self._sc_ended_recently = False
+                self._sc_phase = "green"
 
             if driver_num and driver_num in self._states and flag:
                 self._driver_flags[driver_num] = (flag, rec_date)

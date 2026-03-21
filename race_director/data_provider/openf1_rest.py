@@ -232,3 +232,6 @@ class OpenF1RestProvider:
 
     def get_session_tlas(self) -> set[str]:
         return self._state.get_session_tlas()
+
+    def get_sc_phase(self) -> str:
+        return self._state.get_sc_phase()

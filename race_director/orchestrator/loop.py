@@ -30,6 +30,7 @@ class Orchestrator:
         self._tick_count = 0
         self._lights_out_seen: bool = False
         self._last_leader: int | None = None
+        self._last_sc_phase: str = "none"
         self._adapter = None
         if config.orchestrator.dry_run:
             from race_director.multiviewer_adapter.dry_run import DryRunAdapter
@@ -140,10 +141,21 @@ class Orchestrator:
                 break
         if session and session.status in ("Inactive", "Ended"):
             is_neutralized = True
+
+        # Check SC phase for display notifications
+        sc_phase = self._provider.get_sc_phase()
+        if sc_phase != self._last_sc_phase:
+            if sc_phase == "deployed":
+                display.show_safety_car_deployed()
+            elif sc_phase == "ending":
+                display.show_safety_car_ending()
+            elif sc_phase == "green" and self._last_sc_phase in ("deployed", "ending"):
+                display.show_racing_resumed()
+            self._last_sc_phase = sc_phase
+
         if is_neutralized:
             on_screen = [w.current_tla for w in windows if w.current_tla]
             if self._tick_count % 6 == 0:
-                display.show_neutralized()
                 display.show_tick_status(self._tick_count, on_screen)
             log.info("tick_end", tick=self._tick_count, on_screen=on_screen, swaps_executed=0)
             return
